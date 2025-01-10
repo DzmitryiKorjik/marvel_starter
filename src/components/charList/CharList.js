@@ -1,129 +1,130 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {useState, useEffect, useRef, useMemo} from 'react';
+import PropTypes from 'prop-types';
+import {CSSTransition, TransitionGroup} from 'react-transition-group';
+
+import useMarvelService from '../../services/MarvelService';
 import Spinner from '../spinner/Spinner';
 import ErrorMessage from '../errorMessage/ErrorMessage';
-import MarvelService from '../services/MarvelService';
+
 import './charList.scss';
 
+const setContent = (process, Component, newItemLoading) => {
+    switch (process) {
+        case 'waiting':
+            return <Spinner/>;
+        case 'loading':
+            return newItemLoading ? <Component/> : <Spinner/>;
+        case 'confirmed':
+            return <Component/>;
+        case 'error':
+            return <ErrorMessage/>;
+        default:
+            throw new Error('Unexpected process state');
+    }
+}
+
 const CharList = (props) => {
-    // Состояния компонента
+
     const [charList, setCharList] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(false);
-    const [newItemLoading, setNewItemLoading] = useState(false);
+    const [newItemLoading, setnewItemLoading] = useState(false);
     const [offset, setOffset] = useState(210);
     const [charEnded, setCharEnded] = useState(false);
+    
+    const {getAllCharacters, process, setProcess} = useMarvelService();
 
-    // Ссылка на массив элементов списка для управления фокусом
-    const charRefs = useRef([]);
-
-    // Создание экземпляра MarvelService
-    const marvelService = useRef(new MarvelService());
-
-    // Аналог componentDidMount - вызов функции при монтировании компонента
     useEffect(() => {
-        onRequest(offset);
-    }, []);
+        onRequest(offset, true);
+        // eslint-disable-next-line
+    }, [])
 
-    // Функция запроса данных
-    const onRequest = (offset) => {
-        // Установка состояния загрузки новых элементов
-        onCharListLoading();
-        // Получение списка персонажей из MarvelService
-        marvelService.current.getAllCharacters(offset)
+    const onRequest = (offset, initial) => {
+        initial ? setnewItemLoading(false) : setnewItemLoading(true);
+        getAllCharacters(offset)
             .then(onCharListLoaded)
-            .catch(onError);
+            .then(() => setProcess('confirmed'));
     }
 
-    // Установка состояния при загрузке нового списка персонажей
-    const onCharListLoading = () => {
-        setNewItemLoading(true);
-    }
-
-    // Обработка успешного ответа с новыми персонажами
-    const onCharListLoaded = (newCharList) => {
-        // Проверка, достигнут ли конец списка персонажей
+    const onCharListLoaded = async(newCharList) => {
         let ended = false;
         if (newCharList.length < 9) {
             ended = true;
         }
-
-        // Обновление состояния
-        setCharList(charList => [...charList, ...newCharList]);
-        setLoading(false);
-        setNewItemLoading(false);
+        setCharList([...charList, ...newCharList]);
+        setnewItemLoading(false);
         setOffset(offset + 9);
         setCharEnded(ended);
     }
 
-    // Обработка ошибки
-    const onError = () => {
-        setError(true);
-        setLoading(false);
-    }
-// Обработчик событий нажатия клавиш
-const onKeyPress = useCallback((event, index) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-        // Предотвращаем стандартное поведение страницы при нажатии клавиш Enter или пробел
-        event.preventDefault();
-        // Выбираем элемент при нажатии клавиш Enter или пробел
-        props.onCharSelected(charList[index].id);
-    } else if (event.key === 'ArrowUp' && index > 0) {
-        // Перемещение фокуса на предыдущий элемент при нажатии стрелки вверх
-        charRefs.current[index - 1].focus();
-    } else if (event.key === 'ArrowDown' && index < charRefs.current.length - 1) {
-        // Перемещение фокуса на следующий элемент при нажатии стрелки вниз
-        charRefs.current[index + 1].focus();
-    }
-}, [charList, props]);
+    const itemRefs = useRef([]);
 
-    // Функция для отображения списка персонажей
-    const renderItems = (arr) => {
-        const items = arr.map((item, index) => {
-            let imgStyle = { 'objectFit': 'cover' };
+    const focusOnItem = (id) => {
+        itemRefs.current.forEach(item => item.classList.remove('char__item_selected'));
+        itemRefs.current[id].classList.add('char__item_selected');
+        itemRefs.current[id].focus();
+    }
+
+    const renderItems = arr => {
+        const items =  arr.map((item, i) => {
+            let imgStyle = {'objectFit' : 'cover'};
             if (item.thumbnail === 'http://i.annihil.us/u/prod/marvel/i/mg/b/40/image_not_available.jpg') {
-                imgStyle = { 'objectFit': 'unset' };
+                imgStyle = {'objectFit' : 'unset'};
             }
-
+            
             return (
-                <li
-                    className="char__item"
-                    key={item.id}
-                    ref={el => charRefs.current[index] = el} // Сохранение ссылки на элемент
-                    tabIndex={0} // Установка возможности получения фокуса
-                    onClick={() => props.onCharSelected(item.id)}
-                    onKeyPress={(event) => onKeyPress(event, index)}>
-                    <img src={item.thumbnail} alt={item.name} style={imgStyle} />
-                    <div className="char__name">{item.name}</div>
-                </li>
+                <CSSTransition key={item.id} timeout={500} classNames="char__item">
+                    <li 
+                        className="char__item"
+                        tabIndex={0}
+                        ref={el => itemRefs.current[i] = el}
+                        onClick={() => {
+                            props.onCharSelected(item.id);
+                            focusOnItem(i);
+                        }}
+                        onKeyPress={(e) => {
+                            if (e.key === ' ' || e.key === "Enter") {
+                                props.onCharSelected(item.id);
+                                focusOnItem(i);
+                            }
+                        }}>
+                            <img src={item.thumbnail} alt={item.name} style={imgStyle}/>
+                            <div className="char__name">{item.name}</div>
+                    </li>
+                </CSSTransition>
             )
-        }); 
+        });
+
         return (
             <ul className="char__grid">
-                {items}
+                <TransitionGroup component={null}>
+                    {items}
+                </TransitionGroup>
             </ul>
         )
     }
 
-    // Переменные для управления отображением контента
-    const items = renderItems(charList);
-    const errorMessage = error ? <ErrorMessage /> : null;
-    const spinner = loading ? <Spinner /> : null;
-    const content = !(loading || error) ? items : null;
+    const elements = useMemo(() => {
+        return setContent(process, () => renderItems(charList), newItemLoading);
+        // eslint-disable-next-line
+    }, [process])
 
+    // TransitionGroup работать не будет за счет постоянного пересоздания компонента
+    // разбор в следующем уроке
     return (
         <div className="char__list">
-            {errorMessage}
-            {spinner}
-            {content}
-            <button
+            {elements}
+            <button 
+                disabled={newItemLoading} 
+                style={{'display' : charEnded ? 'none' : 'block'}}
                 className="button button__main button__long"
-                disabled={newItemLoading}
-                style={{ 'display': charEnded ? 'none' : 'block' }}
                 onClick={() => onRequest(offset)}>
                 <div className="inner">load more</div>
             </button>
         </div>
     )
+}
+
+CharList.propTypes = {
+    onCharSelected: PropTypes.func.isRequired
 }
 
 export default CharList;

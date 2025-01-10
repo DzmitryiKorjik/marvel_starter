@@ -1,5 +1,26 @@
 @import '../../style/variables.scss';
 
+/* Стили анимации для появления и исчезновения элементов */
+.char-enter {
+    opacity: 0;
+    transform: translateY(-20px);
+}
+.char-enter-active {
+    opacity: 1;
+    transform: translateY(0);
+    transition: opacity 500ms, transform 500ms;
+}
+.char-exit {
+    opacity: 1;
+    transform: translateY(0);
+}
+.char-exit-active {
+    opacity: 0;
+    transform: translateY(-20px);
+    transition: opacity 500ms, transform 500ms;
+}
+
+/* Основные стили компонента CharList */
 .char {
     &__content {
         margin-top: 50px;
